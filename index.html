@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { --navy:#0f2a4a; --accent:#1b6ef3; --bg:#f3f5f9; --border:#d8dee8; --muted:#5f6b7a; --ink:#1c2533; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; font-size:14px; }
+    .wrap { max-width:760px; margin:0 auto; padding:16px; }
+    .header { background:linear-gradient(135deg,#0f2a4a,#1b4b8a); color:#fff; padding:22px 26px; border-radius:14px 14px 0 0; }
+    .header h1 { margin:0; font-size:22px; font-weight:600; letter-spacing:.2px; }
+    .header p { margin:6px 0 0; font-size:13px; opacity:.85; }
+    .card { background:#fff; padding:22px 26px 26px; border-radius:0 0 14px 14px; box-shadow:0 4px 18px rgba(15,42,74,.10); }
+    .section { margin-top:22px; }
+    .section:first-child { margin-top:0; }
+    .section h2 { margin:0 0 12px; padding-bottom:8px; border-bottom:2px solid #eaeef5; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--navy); }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; }
+    .full { grid-column:1 / -1; }
+    label { display:block; margin-bottom:5px; font-size:12.5px; font-weight:600; color:#344054; }
+    label .req { color:#d92d20; }
+    input, select, textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; color:var(--ink); background:#fff; transition:border .15s, box-shadow .15s; }
+    input, select { height:42px; }
+    textarea { resize:vertical; }
+    input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(27,110,243,.15); }
+    .hint { margin-top:4px; font-size:11.5px; color:var(--muted); }
+    .upload { display:flex; align-items:center; gap:12px; padding:14px 16px; border:2px dashed #b9c4d6; border-radius:10px; background:#f8fafd; cursor:pointer; }
+    .upload:hover { border-color:var(--accent); background:#f1f6ff; }
+    .upload .icon { font-size:26px; }
+    .upload .txt b { display:block; font-size:13.5px; color:var(--navy); }
+    .upload .txt span { font-size:12px; color:var(--muted); }
+    #cv { display:none; }
+    button { margin-top:24px; width:100%; height:46px; background:var(--accent); color:#fff; border:0; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; transition:background .15s; }
+    button:hover { background:#1558c9; }
+    button:disabled { background:#9bbcf0; cursor:not-allowed; }
+    #msg { margin-top:14px; padding:0; font-size:13.5px; border-radius:8px; }
+    #msg.ok { padding:12px 14px; background:#e7f6ec; color:#136c34; border:1px solid #b7e4c7; }
+    #msg.err { padding:12px 14px; background:#fdecea; color:#b42318; border:1px solid #f5c2bd; }
+    .chips { display:flex; flex-wrap:wrap; align-items:center; gap:6px; min-height:42px; padding:5px 8px; border:1px solid var(--border); border-radius:8px; background:#fff; cursor:text; }
+    .chips:focus-within { border-color:var(--accent); box-shadow:0 0 0 3px rgba(27,110,243,.15); }
+    #chipList { display:contents; }
+    .chip { display:inline-flex; align-items:center; gap:6px; background:#e8f0fe; color:#174ea6; border-radius:16px; padding:3px 8px 3px 11px; font-size:13px; }
+    .chip .x { cursor:pointer; font-size:15px; line-height:1; color:#5f6b7a; }
+    .chip .x:hover { color:#d92d20; }
+    .chips input { flex:1; min-width:170px; height:28px; padding:0 4px; border:0; box-shadow:none; }
+    .chips input:focus { border:0; box-shadow:none; }
+    .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#f8fafd; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; }
+    .toggle-row:last-child { margin-bottom:0; }
+    .toggle-row .lbl b { display:block; font-size:13.5px; color:var(--navy); }
+    .toggle-row .lbl span { font-size:11.5px; color:var(--muted); }
+    .switch { position:relative; width:42px; height:24px; flex-shrink:0; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; inset:0; background:#c6ccd6; border-radius:24px; cursor:pointer; transition:.15s; }
+    .slider:before { content:""; position:absolute; height:18px; width:18px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.15s; }
+    .switch input:checked + .slider { background:var(--accent); }
+    .switch input:checked + .slider:before { transform:translateX(18px); }
+    @media (max-width:600px) { .grid { grid-template-columns:1fr; } .header, .card { padding-left:18px; padding-right:18px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>Interview Scheduling</h1>
+      <p>Candidate-er details din, calendar invitation auto pathiye deoa hobe.</p>
+    </div>
+
+    <div class="card">
+
+      <div class="section">
+        <h2>Candidate Details</h2>
+        <div class="grid">
+          <div class="full">
+            <label>Employee Name <span class="req">*</span></label>
+            <input id="name" placeholder="e.g. MD. RABBI HOSSAIN">
+          </div>
+          <div>
+            <label>Email <span class="req">*</span></label>
+            <input id="email" type="email" placeholder="candidate@email.com">
+          </div>
+          <div>
+            <label>Mobile</label>
+            <input id="mobile" type="tel" placeholder="01XXXXXXXXX">
+          </div>
+          <div>
+            <label>Position <span class="req">*</span></label>
+            <select id="position">
+              <option value="" selected>Select position</option>
+              <option value="Field Officer">Field Officer</option>
+              <option value="Area Manager">Area Manager</option>
+              <option value="TSO">TSO</option>
+              <option value="Junior TSO">Junior TSO</option>
+              <option value="Regional Manager">Regional Manager</option>
+            </select>
+          </div>
+          <div>
+            <label>Area</label>
+            <input id="area" placeholder="e.g. Chuadanga">
+          </div>
+          <div class="full">
+            <label>Candidate CV</label>
+            <label class="upload" for="cv">
+              <span class="icon">📎</span>
+              <span class="txt"><b id="cvName">Click kore CV select koren</b><span id="cvSub">PDF, DOC ba DOCX (max 10 MB)</span></span>
+            </label>
+            <input id="cv" type="file" accept=".pdf,.doc,.docx">
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Interview Schedule</h2>
+        <div class="grid">
+          <div class="full">
+            <label>Date <span class="req">*</span></label>
+            <input id="date" type="date">
+          </div>
+          <div>
+            <label>Start Time <span class="req">*</span></label>
+            <input id="startTime" type="time">
+          </div>
+          <div>
+            <label>End Time <span class="req">*</span></label>
+            <input id="endTime" type="time">
+          </div>
+          <div>
+            <label>Interview Type</label>
+            <select id="interviewType">
+              <option value="Online" selected>Online</option>
+              <option value="Offline">Offline</option>
+            </select>
+          </div>
+          <div>
+            <label>Status</label>
+            <select id="status">
+              <option value="Will Attend" selected>Will Attend</option>
+              <option value="Will Not Attend">Will Not Attend</option>
+              <option value="Pending">Pending</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Interview Panel &amp; Notes</h2>
+        <div class="grid">
+          <div class="full">
+            <label>Interviewer Emails</label>
+            <div class="chips" id="chipBox" onclick="$('interviewerInput').focus()">
+              <span id="chipList"></span>
+              <input id="interviewerInput" placeholder="Email likhe Enter chapun">
+            </div>
+            <div class="hint">Enter, comma ba space chaple email add hobe. Ei email gulo-o candidate-er moto invitation pabe.</div>
+          </div>
+          <div class="full">
+            <label>Notes</label>
+            <textarea id="notes" rows="3" placeholder="Internal note (optional)"></textarea>
+            <div class="hint">Notes shudhu Sheet-e save hobe, invitation mail-e jabe na.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section" id="waSection">
+        <h2>Share on WhatsApp (optional)</h2>
+        <div id="waGroups"></div>
+
+        <label style="margin-top:14px;">Personal WhatsApp Numbers</label>
+        <div class="chips" id="waNumBox" onclick="$('waNumInput').focus()">
+          <span id="waNumList"></span>
+          <input id="waNumInput" placeholder="01XXXXXXXXX likhe Enter chapun">
+        </div>
+        <div class="hint">Ekadhik number add kora jay. Country code na dile Bangladesh (+880) dhore neya hobe.</div>
+
+        <div class="toggle-row" style="margin-top:10px;">
+          <div class="lbl"><b>Send to Personal Numbers</b><span>On thakle upor-er number gulote message jabe</span></div>
+          <label class="switch">
+            <input type="checkbox" id="sendPersonalWa">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <button id="btn" onclick="submitForm()">Save &amp; Send Invitation</button>
+      <div id="msg"></div>
+    </div>
+  </div>
+
+  <script>
+    // <<< Ekhane nijer deploy kora Apps Script Web App URL ta boshao (/exec diye shesh) >>>
+    var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwc4BBl-n5KfRSF16Suikw-3jkZKHK4mQhZMgxCb8ODxvulqkNU1e-qN06vC0rDsKvk/exec';
+
+    var fields = ['name','email','mobile','position','date','startTime','endTime','interviewType','status','area','notes'];
+    var defaults = { interviewType: 'Online', status: 'Will Attend', position: '' };
+    var interviewers = [];
+    var waGroupsList = [];
+    var personalNumbers = [];
+
+    // Default interviewers / WhatsApp group list Apps Script theke load kora
+    fetch(APPS_SCRIPT_URL + '?action=config')
+      .then(function (r) { return r.json(); })
+      .then(function (cfg) {
+        interviewers = cfg.defaultInterviewers || [];
+        waGroupsList = cfg.whatsappGroups || [];
+        renderChips();
+        renderWaGroups();
+      })
+      .catch(function () { /* config load fail korle-o form khali box diye kaj korbe */ });
+    var MAX_MB = 10;
+
+    function $(id) { return document.getElementById(id); }
+
+    $('cv').addEventListener('change', function () {
+      var f = this.files[0];
+      if (!f) { resetCv(); return; }
+      if (f.size > MAX_MB * 1024 * 1024) {
+        showMsg('err', 'CV file ' + MAX_MB + ' MB-er cheye boro.');
+        this.value = ''; resetCv(); return;
+      }
+      $('cvName').textContent = f.name;
+      $('cvSub').textContent = (f.size / 1024 / 1024).toFixed(2) + ' MB - change korte abar click koren';
+      showMsg('', '');
+    });
+
+    // ---- Interviewer email chips (Google Calendar guest-er moto) ----
+    renderChips();
+    renderWaGroups();
+    renderWaNumbers();
+
+    function renderWaGroups() {
+      var box = $('waGroups');
+      waGroupsList.forEach(function (g) {
+        var row = document.createElement('div');
+        row.className = 'toggle-row';
+        row.innerHTML =
+          '<div class="lbl"><b>' + g.name + '</b></div>' +
+          '<label class="switch">' +
+            '<input type="checkbox" class="waChk" data-id="' + g.id + '">' +
+            '<span class="slider"></span>' +
+          '</label>';
+        box.appendChild(row);
+      });
+    }
+
+    // ---- Personal WhatsApp number chips ----
+    function cleanPhone(raw) {
+      var digits = raw.replace(/[^0-9]/g, '');
+      if (!digits) return '';
+      if (digits.length === 11 && digits.charAt(0) === '0') digits = '880' + digits.slice(1);
+      else if (digits.length === 10) digits = '880' + digits;
+      return digits;
+    }
+    function isPhone(raw) {
+      var d = cleanPhone(raw);
+      return d.length >= 10 && d.length <= 15;
+    }
+    function splitPhoneTokens(str) {
+      return str.split(/[\s,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+    function addNumbers(text) {
+      var bad = [];
+      splitPhoneTokens(text).forEach(function (t) {
+        if (!isPhone(t)) { bad.push(t); return; }
+        var d = cleanPhone(t);
+        if (personalNumbers.indexOf(d) === -1) personalNumbers.push(d);
+      });
+      renderWaNumbers();
+      return bad;
+    }
+    function commitPhoneInput() {
+      var inp = $('waNumInput');
+      if (!inp.value.trim()) return true;
+      var bad = addNumbers(inp.value);
+      inp.value = bad.join(' ');
+      if (bad.length) {
+        showMsg('err', 'Number thik noy: ' + bad.join(', '));
+        return false;
+      }
+      showMsg('', '');
+      return true;
+    }
+    function renderWaNumbers() {
+      var list = $('waNumList');
+      while (list.firstChild) list.removeChild(list.firstChild);
+      personalNumbers.forEach(function (num, idx) {
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        var t = document.createElement('span');
+        t.textContent = '+' + num;
+        var x = document.createElement('span');
+        x.className = 'x';
+        x.textContent = '\u00d7';
+        x.onclick = function (ev) { ev.stopPropagation(); personalNumbers.splice(idx, 1); renderWaNumbers(); };
+        chip.appendChild(t); chip.appendChild(x);
+        list.appendChild(chip);
+      });
+    }
+    $('waNumInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ',' || e.key === ' ' || e.key === ';') {
+        e.preventDefault();
+        commitPhoneInput();
+      } else if (e.key === 'Backspace' && !this.value && personalNumbers.length) {
+        personalNumbers.pop();
+        renderWaNumbers();
+      }
+    });
+    $('waNumInput').addEventListener('input', function () {
+      if (/[ ,;]/.test(this.value)) commitPhoneInput();
+    });
+    $('waNumInput').addEventListener('blur', function () { commitPhoneInput(); });
+
+    function isEmail(s) { return /^[^ @]+@[^ @]+[.][^ @]+$/.test(s); }
+
+    function splitTokens(str) {
+      var out = [], cur = '';
+      for (var i = 0; i < str.length; i++) {
+        var ch = str.charAt(i);
+        if (' ,;'.indexOf(ch) >= 0 || str.charCodeAt(i) < 32) {
+          if (cur) out.push(cur);
+          cur = '';
+        } else { cur += ch; }
+      }
+      if (cur) out.push(cur);
+      return out;
+    }
+
+    function addEmails(text) {
+      var bad = [];
+      splitTokens(text).forEach(function (t) {
+        t = t.toLowerCase();
+        if (!isEmail(t)) { bad.push(t); return; }
+        if (interviewers.indexOf(t) === -1) interviewers.push(t);
+      });
+      renderChips();
+      return bad;
+    }
+
+    function commitInput() {
+      var inp = $('interviewerInput');
+      if (!inp.value.trim()) return true;
+      var bad = addEmails(inp.value);
+      inp.value = bad.join(' ');
+      if (bad.length) {
+        showMsg('err', 'Email thik noy: ' + bad.join(', '));
+        return false;
+      }
+      showMsg('', '');
+      return true;
+    }
+
+    function renderChips() {
+      var list = $('chipList');
+      while (list.firstChild) list.removeChild(list.firstChild);
+      interviewers.forEach(function (em, idx) {
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        var t = document.createElement('span');
+        t.textContent = em;
+        var x = document.createElement('span');
+        x.className = 'x';
+        x.textContent = '\u00d7';
+        x.onclick = function (ev) { ev.stopPropagation(); interviewers.splice(idx, 1); renderChips(); };
+        chip.appendChild(t); chip.appendChild(x);
+        list.appendChild(chip);
+      });
+    }
+
+    $('interviewerInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ',' || e.key === ' ' || e.key === ';') {
+        e.preventDefault();
+        commitInput();
+      } else if (e.key === 'Backspace' && !this.value && interviewers.length) {
+        interviewers.pop();
+        renderChips();
+      }
+    });
+    $('interviewerInput').addEventListener('input', function () {
+      if (/[ ,;]/.test(this.value)) commitInput();
+    });
+    $('interviewerInput').addEventListener('blur', function () { commitInput(); });
+
+    function resetCv() {
+      $('cv').value = '';
+      $('cvName').textContent = 'Click kore CV select koren';
+      $('cvSub').textContent = 'PDF, DOC ba DOCX (max 10 MB)';
+    }
+
+    function showMsg(type, text) {
+      var m = $('msg');
+      m.className = type;
+      m.textContent = text;
+    }
+
+    function setBusy(busy) {
+      var b = $('btn');
+      b.disabled = busy;
+      b.textContent = busy ? 'Sending... ekto opekkha koren' : 'Save & Send Invitation';
+    }
+
+    function submitForm() {
+      if (!commitInput()) return;
+      if (!commitPhoneInput()) return;
+      var d = {};
+      fields.forEach(function (f) { d[f] = $(f).value.trim(); });
+      d.interviewers = interviewers.join(',');
+      d.whatsappGroups = Array.prototype.slice.call(document.querySelectorAll('.waChk:checked'))
+        .map(function (el) { return el.getAttribute('data-id'); }).join(',');
+      d.personalWhatsapp = $('sendPersonalWa').checked ? personalNumbers.join(',') : '';
+
+      if (!d.name || !d.email || !d.position || !d.date || !d.startTime || !d.endTime) {
+        showMsg('err', 'Employee Name, Email, Position, Date, Start Time ar End Time dite hobe.');
+        return;
+      }
+      if (d.endTime <= d.startTime) {
+        showMsg('err', 'End Time, Start Time-er pore hote hobe.');
+        return;
+      }
+      showMsg('', '');
+      setBusy(true);
+
+      var file = $('cv').files[0];
+      if (!file) { send(d); return; }
+
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        d.cv = { name: file.name, mimeType: file.type, data: String(e.target.result).split(',')[1] };
+        send(d);
+      };
+      reader.onerror = function () {
+        setBusy(false);
+        showMsg('err', 'CV file porte problem hoyeche.');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function send(d) {
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },  // preflight avoid korar jonno
+        body: JSON.stringify(d)
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          setBusy(false);
+          if (!res.ok) { showMsg('err', res.message); return; }
+          showMsg('ok', res.message);
+          fields.forEach(function (f) { $(f).value = defaults[f] !== undefined ? defaults[f] : ''; });
+          fetch(APPS_SCRIPT_URL + '?action=config').then(function (r) { return r.json(); }).then(function (cfg) {
+            interviewers = cfg.defaultInterviewers || []; renderChips();
+          });
+          $('interviewerInput').value = '';
+          document.querySelectorAll('.waChk').forEach(function (el) { el.checked = false; });
+          personalNumbers = []; renderWaNumbers(); $('waNumInput').value = ''; $('sendPersonalWa').checked = false;
+          resetCv();
+        })
+        .catch(function (err) {
+          setBusy(false);
+          showMsg('err', 'Network/Server error: ' + err.message);
+        });
+    }
+  </script>
+</body>
+</html>
