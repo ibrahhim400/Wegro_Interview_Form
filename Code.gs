@@ -1,449 +1,6 @@
-/**
- * Internal Interview Form -> Existing Sheet -> Standard Google Calendar Invitation
- * (Google Meet + CV attachment)
- */
-
-// ====== SETTINGS ======
-// Secret/account-specific value gulo (Sheet ID, API keys, group IDs, default emails)
-// code-e likha nai -- Apps Script-er "Script Properties"-e rakha ache.
-// Setup: Apps Script -> gear icon (Project Settings) -> Script Properties -> Add property.
-// Dorkari key gulo README.md-e deya ache.
-const CFG = PropertiesService.getScriptProperties();
-function cfgStr_(key, fallback) { return CFG.getProperty(key) || fallback || ''; }
-function cfgJson_(key, fallback) {
-  try { const v = CFG.getProperty(key); return v ? JSON.parse(v) : fallback; }
-  catch (e) { return fallback; }
-}
-
-const SPREADSHEET_ID = cfgStr_('SPREADSHEET_ID');
-const TARGET_SHEET_NAME = 'Interviews';   // Tomar existing tab-er nam
-const TIMEZONE = 'Asia/Dhaka';
-const COMPANY_NAME = cfgStr_('COMPANY_NAME', 'Your Company');  // Event title-e boshbe
-const CV_FOLDER_NAME = 'Interview CVs';   // Drive-e ei nam-e folder auto toiri hobe
-
-// Form field  ->  Tomar sheet-er column header
-const COLUMNS = {
-  name:          'Employee Name',
-  email:         'Email',
-  mobile:        'Mobile',
-  position:      'Position',
-  interviewers:  'Interviewers',
-  date:          'Interview Date',   // <-- Tomar Sheet-er header eta
-  time:          'Time',           // Sheet-e "03:00-03:15 PM" format-e boshbe
-  interviewType: 'Interview Type',
-  status:        'Status',
-  area:          'Area',
-  notes:         'Notes',
-  cvLink:        'CV Link'         // auto toiri hobe
-};
-const INVITE_STATUS_HEADER = 'Invite Status';   // auto toiri hobe
-
-// Ei row-ta "template" hishebe use hobe: Interview Type / Status column-er
-// color/dropdown format ei row theke notun row-e copy hobe.
-// Sheet-er 1st data row (mane row 2)-e Interview Type = Online, Status = Will Attend
-// diye already color/dropdown set kora thakle default 2 rekhe dao.
-const FORMAT_TEMPLATE_ROW = 2;
-
-// Interviewer Emails box-e default hisebe thakbe (form-e giye add/remove kora jabe)
-// Script Properties key: DEFAULT_INTERVIEWERS -> JSON array, e.g. ["a@x.com","b@y.com"]
-const DEFAULT_INTERVIEWERS = cfgJson_('DEFAULT_INTERVIEWERS', []);
-
-// ====== WhatsApp (Green-API) ======
-const WHATSAPP_ENABLED = true;
-// Script Properties: GREEN_API_ID_INSTANCE, GREEN_API_TOKEN
-const GREEN_API_ID_INSTANCE = cfgStr_('GREEN_API_ID_INSTANCE');
-const GREEN_API_TOKEN = cfgStr_('GREEN_API_TOKEN');
-// getChats theke paoa SHOTHIK Group ID ekhane boshao (format: xxxxxxxxxxxxxxxxxx@g.us)
-// Script Properties key: WHATSAPP_GROUPS -> JSON array
-// e.g. [{"id":"hr","name":"HR Internal Team","groupId":"xxxxxxxxxxxxxxxxxx@g.us"}]
-const WHATSAPP_GROUPS = cfgJson_('WHATSAPP_GROUPS', []);
-// ======================
-
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('Interview')
-    .addItem('New Interview Invite', 'showForm')
-    .addToUi();
-}
-
-function showForm() {
-  const html = HtmlService.createHtmlOutput(renderForm_())
-    .setWidth(760).setHeight(840);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Interview Scheduling');
-}
-
-// Web app link hishebe use korle
-function doGet(e) {
-  // GitHub Pages (ba onno external page) theke config (default interviewers,
-  // WhatsApp groups) fetch korar jonno: <webAppUrl>?action=config
-  if (e && e.parameter && e.parameter.action === 'config') {
-    return jsonResponse_({
-      defaultInterviewers: DEFAULT_INTERVIEWERS,
-      whatsappGroups: WHATSAPP_GROUPS.map(g => ({ id: g.id, name: g.name }))
-    });
-  }
-  return HtmlService.createHtmlOutput(renderForm_())
-    .setTitle('Interview Scheduling')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-// External page (GitHub Pages) theke fetch() diye form submit korar entry point
-function doPost(e) {
-  try {
-    const data = JSON.parse(e.postData.contents);
-    const message = submitInterview(data);
-    return jsonResponse_({ ok: true, message: message });
-  } catch (err) {
-    return jsonResponse_({ ok: false, message: String(err && err.message || err) });
-  }
-}
-
-function jsonResponse_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// Default interviewer emails FORM_HTML-er bhitor boshiye dey
-function renderForm_() {
-  return FORM_HTML
-    .replace('__DEFAULT_INTERVIEWERS__', JSON.stringify(DEFAULT_INTERVIEWERS))
-    .replace('__WHATSAPP_GROUPS__', JSON.stringify(WHATSAPP_GROUPS.map(g => ({ id: g.id, name: g.name }))));
-}
-
-function getSS_() {
-  return SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID)
-                        : SpreadsheetApp.getActiveSpreadsheet();
-}
-
-// Form theke call hoy
-function submitInterview(d) {
-  const sheet = getSS_().getSheetByName(TARGET_SHEET_NAME);
-  if (!sheet) throw new Error('Tab paoa jay nai: ' + TARGET_SHEET_NAME);
-  if (typeof Calendar === 'undefined') {
-    throw new Error('Google Calendar API enable kora nai. Apps Script -> Services (+) -> Google Calendar API -> Add koren, tarpor New version deploy koren.');
-  }
-
-  // Start / End time
-  const start = Utilities.parseDate(d.date + ' ' + d.startTime, TIMEZONE, 'yyyy-MM-dd HH:mm');
-  const end   = Utilities.parseDate(d.date + ' ' + d.endTime,   TIMEZONE, 'yyyy-MM-dd HH:mm');
-  if (end <= start) throw new Error('End Time, Start Time-er pore hote hobe.');
-
-  // Guests = candidate + interviewers
-  const guestList = [];
-  const badEmails = [];
-  [d.email].concat(String(d.interviewers || '').split(/[\s,;]+/)).forEach(s => {
-    s = String(s).trim().toLowerCase();
-    if (!s) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) { badEmails.push(s); return; }
-    if (guestList.indexOf(s) === -1) guestList.push(s);
-  });
-  if (badEmails.length) throw new Error('Email thik noy: ' + badEmails.join(', '));
-
-  // 0) CV Drive-e save
-  let cvFile = null;
-  if (d.cv && d.cv.data) {
-    cvFile = saveCv_(d.cv, d.name);
-    try { cvFile.addViewers(guestList); } catch (e) { /* share na hole-o cholbe */ }
-    d.cvLink = cvFile.getUrl();
-  }
-
-  // 1) Sheet-e row add (column header onujayi)
-  const statusCol = ensureColumn_(sheet, INVITE_STATUS_HEADER);
-  ensureColumn_(sheet, COLUMNS.cvLink);
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
-                       .map(h => String(h).trim());
-  const rowData = {};
-  Object.keys(COLUMNS).forEach(k => rowData[COLUMNS[k]] = d[k]);
-  rowData[COLUMNS.date] = Utilities.formatDate(start, TIMEZONE, 'dd-MMM-yyyy');
-  rowData[COLUMNS.time] = formatRange_(start, end);
-  rowData[COLUMNS.interviewers] = guestList.slice(1).join(', ');
-  const newRow = headers.map(h => rowData[h] === undefined ? '' : rowData[h]);
-  sheet.appendRow(newRow);
-  const rowNum = sheet.getLastRow();
-  applyTemplateFormat_(sheet, headers, rowNum, [COLUMNS.interviewType, COLUMNS.status]);
-
-  // 2) Standard Google Calendar invitation
-  try {
-    const r = createInvite_(d, start, end, guestList, cvFile);
-    if (d.interviewType === 'Online' && !r.meetOk) {
-      sheet.getRange(rowNum, statusCol).setValue('Invite Sent ✅ (Meet link toiri hoyni)');
-      return 'Invite pathano hoyeche, kintu Google Meet link toiri hoyni. Calendar-e giye manually Meet add koren.';
-    }
-    if (d.interviewType === 'Online' && !r.openOk) {
-      sheet.getRange(rowNum, statusCol).setValue('Invite Sent ✅ (Meet Open hoyni: ' + r.openError + ')');
-      return 'Invite pathano hoyeche ✅ kintu Meet access "Open" set kora jay nai (' + r.openError + '). Setup step ta abar check koren.';
-    }
-    sheet.getRange(rowNum, statusCol).setValue('Invite Sent ✅');
-    sendWhatsAppInvite_(d, start, end, r.meetLink);
-    return 'Invite pathano hoyeche ✅\nGuests: ' + guestList.join(', ');
-  } catch (err) {
-    sheet.getRange(rowNum, statusCol).setValue('Error: ' + err.message);
-    throw new Error('Data save hoyeche kintu invite pathano jay nai: ' + err.message);
-  }
-}
-
-// Event title: Invitation to Interview at WeGro | TFO - Chuadanga | MD. RABBI HOSSAIN
-function buildTitle_(d) {
-  const middle = [d.position, d.area].filter(Boolean).join(' - ');
-  return ['Invitation to Interview at ' + COMPANY_NAME, middle, d.name]
-    .filter(Boolean).join(' | ');
-}
-
-// Mail-er bhitorer likha: shudhu Employee Name, Position, Area
-// "Tuesday, 29 September · 3:45 – 4:00pm" -- direct Calendar-er format-er moto
-function buildScheduleLine_(start, end) {
-  const dateStr = Utilities.formatDate(start, TIMEZONE, 'EEEE, d MMMM');
-  const sTime = Utilities.formatDate(start, TIMEZONE, 'h:mm');
-  const sMer  = Utilities.formatDate(start, TIMEZONE, 'a').toLowerCase();
-  const eTime = Utilities.formatDate(end, TIMEZONE, 'h:mm');
-  const eMer  = Utilities.formatDate(end, TIMEZONE, 'a').toLowerCase();
-  const timeStr = (sMer === eMer)
-    ? sTime + ' \u2013 ' + eTime + eMer
-    : sTime + sMer + ' \u2013 ' + eTime + eMer;
-  return dateStr + ' \u00b7 ' + timeStr;
-}
-
-function buildWhatsAppMessage_(d, start, end, meetLink) {
-  const lines = [
-    buildTitle_(d),
-    buildScheduleLine_(start, end),
-    'Time zone: ' + TIMEZONE
-  ];
-  if (d.interviewType === 'Online' && meetLink) {
-    lines.push('', 'Google Meet joining info', 'Video call link: ' + meetLink);
-  } else if (d.interviewType !== 'Online' && d.area) {
-    lines.push('', 'Location: ' + d.area);
-  }
-  return lines.join('\n');
-}
-
-function sendWhatsAppInvite_(d, start, end, meetLink) {
-  if (!WHATSAPP_ENABLED) return;
-  const message = buildWhatsAppMessage_(d, start, end, meetLink);
-
-  // Groups (checkbox diye select kora)
-  const selectedGroups = String(d.whatsappGroups || '').split(',').map(s => s.trim()).filter(Boolean);
-  WHATSAPP_GROUPS
-    .filter(g => selectedGroups.indexOf(g.id) !== -1)
-    .forEach(g => sendGreenApiMessage_(g.groupId, message));
-
-  // Personal numbers (chip box diye add kora)
-  String(d.personalWhatsapp || '').split(',').map(s => s.trim()).filter(Boolean)
-    .forEach(num => sendGreenApiMessage_(num + '@c.us', message));
-}
-
-function sendGreenApiMessage_(chatId, message) {
-  try {
-    const url = 'https://api.green-api.com/waInstance' + GREEN_API_ID_INSTANCE +
-      '/sendMessage/' + GREEN_API_TOKEN;
-    UrlFetchApp.fetch(url, {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify({ chatId: chatId, message: message }),
-      muteHttpExceptions: true
-    });
-  } catch (e) { /* WhatsApp fail korle-o invite already jawa thik ache, script thambe na */ }
-}
-
-function buildDescription_(d) {
-  const lines = [];
-  if (d.name)     lines.push('Employee Name: ' + d.name);
-  if (d.position) lines.push('Position: ' + d.position);
-  if (d.area)     lines.push('Area: ' + d.area);
-  if (d.notes)    lines.push('', d.notes);
-  return lines.join('\n');
-}
-
-// Return: true = Meet link ready (ba Online noy)
-function createInvite_(d, start, end, guestList, cvFile) {
-  const isOnline = d.interviewType === 'Online';
-
-  const ev = {
-    summary: buildTitle_(d),
-    description: buildDescription_(d),
-    start: { dateTime: iso_(start), timeZone: TIMEZONE },
-    end:   { dateTime: iso_(end),   timeZone: TIMEZONE },
-    reminders: { useDefault: true }
-  };
-
-  // Offline interview hole Area-ta event-er Location hishebe jabe
-  if (!isOnline && d.area) ev.location = d.area;
-
-  // Online -> Google Meet (access type OPEN: kono admin approval / knock lagbe na)
-  let openOk = false, openError = '';
-  if (isOnline) {
-    const res = createOpenMeetSpace_();
-    if (res.space) {
-      const sp = res.space;
-      ev.hangoutLink = sp.meetingUri;
-      ev.conferenceData = {
-        conferenceId: sp.meetingCode,
-        entryPoints: [{
-          entryPointType: 'video',
-          uri: sp.meetingUri,
-          label: 'meet.google.com/' + sp.meetingCode
-        }],
-        conferenceSolution: { key: { type: 'hangoutsMeet' } }
-      };
-      openOk = true;
-    } else {
-      // Fallback: normal Meet (default access). Invite tobu jabe
-      openError = res.error;
-      ev.conferenceData = {
-        createRequest: {
-          requestId: Utilities.getUuid(),
-          conferenceSolutionKey: { type: 'hangoutsMeet' }
-        }
-      };
-    }
-  }
-
-  // CV attachment
-  if (cvFile) {
-    ev.attachments = [{
-      fileUrl: cvFile.getUrl(),
-      title: cvFile.getName(),
-      mimeType: cvFile.getMimeType()
-    }];
-  }
-
-  // Step 1: event toiri (guest chhara, kono mail jabe na)
-  let created = withRetry_(() => Calendar.Events.insert(ev, 'primary', {
-    sendUpdates: 'none',
-    supportsAttachments: true,
-    conferenceDataVersion: 1
-  }));
-
-  // Step 2: Meet link ready hoyeche ki na check (mail-e jeno link thake)
-  let meetOk = true;
-  if (isOnline) {
-    for (let i = 0; i < 6 && !hasMeet_(created); i++) {
-      Utilities.sleep(1000);
-      created = withRetry_(() => Calendar.Events.get('primary', created.id));
-    }
-    meetOk = hasMeet_(created);
-  }
-
-  // Step 3: guest add -> tokhon standard invitation mail jay (Meet + CV shoho)
-  withRetry_(() => Calendar.Events.patch(
-    { attendees: guestList.map(email => ({ email: email })) },
-    'primary',
-    created.id,
-    { sendUpdates: 'all', supportsAttachments: true, conferenceDataVersion: 1 }
-  ));
-  const meetLink = created.hangoutLink ||
-    (created.conferenceData && created.conferenceData.entryPoints &&
-     created.conferenceData.entryPoints[0] && created.conferenceData.entryPoints[0].uri) || '';
-  return { meetOk: meetOk, openOk: openOk, openError: openError, meetLink: meetLink };
-}
-
-function hasMeet_(ev) {
-  return !!(ev.hangoutLink ||
-    (ev.conferenceData && ev.conferenceData.entryPoints && ev.conferenceData.entryPoints.length));
-}
-
-// Google Calendar API rate-limit / temporary error hole 3 bar retry kore (wait diye)
-function withRetry_(fn) {
-  const delays = [2000, 4000, 8000];
-  for (let i = 0; i <= delays.length; i++) {
-    try {
-      return fn();
-    } catch (err) {
-      const msg = String(err && err.message || err);
-      const retryable = /rate limit|quota|backend|internal error|503|500/i.test(msg);
-      if (!retryable || i === delays.length) throw err;
-      Utilities.sleep(delays[i]);
-    }
-  }
-}
-
-// Meet REST API diye "OPEN" access-er meeting space toiri
-function createOpenMeetSpace_() {
-  try {
-    const resp = UrlFetchApp.fetch('https://meet.googleapis.com/v2/spaces', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
-      payload: JSON.stringify({ config: { accessType: 'OPEN' } }),
-      muteHttpExceptions: true
-    });
-    const code = resp.getResponseCode();
-    if (code !== 200) {
-      let msg = 'HTTP ' + code;
-      try { msg += ' ' + JSON.parse(resp.getContentText()).error.message; } catch (e) {}
-      return { space: null, error: msg.slice(0, 160) };
-    }
-    const sp = JSON.parse(resp.getContentText());
-    return sp.meetingUri ? { space: sp, error: '' } : { space: null, error: 'meetingUri paoa jay nai' };
-  } catch (err) {
-    return { space: null, error: String(err.message || err).slice(0, 160) };
-  }
-}
-
-function saveCv_(cv, name) {
-  const folders = DriveApp.getFoldersByName(CV_FOLDER_NAME);
-  const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(CV_FOLDER_NAME);
-  const safeName = String(name).replace(/[\\\/:*?"<>|]/g, '').trim();
-  const blob = Utilities.newBlob(
-    Utilities.base64Decode(cv.data),
-    cv.mimeType || 'application/pdf',
-    safeName + ' - CV - ' + cv.name
-  );
-  return folder.createFile(blob);
-}
-
-function iso_(date) {
-  return Utilities.formatDate(date, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
-}
-
-// 03:00-03:15 PM  (AM/PM alada hole: 11:45 AM-12:15 PM)
-function formatRange_(start, end) {
-  const s = Utilities.formatDate(start, TIMEZONE, 'hh:mm a');
-  const e = Utilities.formatDate(end, TIMEZONE, 'hh:mm a');
-  return (s.slice(-2) === e.slice(-2)) ? s.slice(0, 5) + '-' + e : s + '-' + e;
-}
-
-// Template row (FORMAT_TEMPLATE_ROW)-er format/dropdown color notun row-e copy kore,
-// value ta ager moto thik thake, shudhu format/validation ashe.
-function applyTemplateFormat_(sheet, headers, rowNum, colNames) {
-  if (rowNum === FORMAT_TEMPLATE_ROW) return; // template row nijei, kichu korar dorkar nai
-  colNames.forEach(name => {
-    const idx = headers.indexOf(name);
-    if (idx === -1) return;
-    const col = idx + 1;
-    const src = sheet.getRange(FORMAT_TEMPLATE_ROW, col);
-    const dest = sheet.getRange(rowNum, col);
-    try {
-      src.copyTo(dest, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-      src.copyTo(dest, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
-    } catch (e) { /* format copy fail hole-o value thik thakbe */ }
-  });
-}
-
-function ensureColumn_(sheet, name) {
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
-                       .map(h => String(h).trim());
-  let idx = headers.indexOf(name);
-  if (idx === -1) {
-    idx = headers.length;
-    sheet.getRange(1, idx + 1).setValue(name);
-  }
-  return idx + 1;
-}
-
-// Prothombar ekbar Run korle Calendar / Sheet / Drive permission chaibe
-function authorize() {
-  CalendarApp.getDefaultCalendar();
-  SpreadsheetApp.openById(SPREADSHEET_ID);
-  DriveApp.getRootFolder();
-  UrlFetchApp.fetch('https://meet.googleapis.com/$discovery/rest?version=v2', { muteHttpExceptions: true });
-}
-
-// ====== FORM HTML (Form.html file lagbe na) ======
-const FORM_HTML = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
-  <base target="_top">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root { --navy:#0f2a4a; --accent:#1b6ef3; --bg:#f3f5f9; --border:#d8dee8; --muted:#5f6b7a; --ink:#1c2533; }
@@ -497,9 +54,31 @@ const FORM_HTML = `<!DOCTYPE html>
     .switch input:checked + .slider { background:var(--accent); }
     .switch input:checked + .slider:before { transform:translateX(18px); }
     @media (max-width:600px) { .grid { grid-template-columns:1fr; } .header, .card { padding-left:18px; padding-right:18px; } }
+      .lockscreen { position:fixed; inset:0; background:linear-gradient(135deg,#0f2a4a,#1b4b8a); display:flex; align-items:center; justify-content:center; z-index:9999; padding:16px; }
+    .lockbox { background:#fff; border-radius:14px; padding:32px 28px; max-width:360px; width:100%; text-align:center; box-shadow:0 10px 40px rgba(0,0,0,.25); }
+    .lockbox .icon { font-size:34px; }
+    .lockbox h2 { margin:10px 0 4px; font-size:18px; color:#0f2a4a; }
+    .lockbox p { margin:0 0 18px; font-size:13px; color:#5f6b7a; }
+    .lockbox input { width:100%; height:44px; padding:0 14px; border:1px solid #d8dee8; border-radius:8px; font-size:15px; text-align:center; }
+    .lockbox input:focus { outline:none; border-color:#1b6ef3; box-shadow:0 0 0 3px rgba(27,110,243,.15); }
+    .lockbox button { margin-top:14px; width:100%; height:44px; background:#1b6ef3; color:#fff; border:0; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; }
+    .lockbox button:hover { background:#1558c9; }
+    .lockbox .err { margin-top:10px; font-size:13px; color:#d92d20; display:none; }
+    body.locked .wrap { display:none; }
   </style>
 </head>
-<body>
+<body class="locked">
+
+  <div class="lockscreen" id="lockScreen">
+    <div class="lockbox">
+      <div class="icon">🔒</div>
+      <h2>WeGro Interview Form</h2>
+      <p>Continue korte password din</p>
+      <input id="pwInput" type="password" placeholder="Password" autocomplete="off">
+      <button onclick="checkPassword()">Enter</button>
+      <div class="err" id="pwErr">Password thik na, abar try koro.</div>
+    </div>
+  </div>
   <div class="wrap">
     <div class="header">
       <h1>Interview Scheduling</h1>
@@ -627,11 +206,50 @@ const FORM_HTML = `<!DOCTYPE html>
   </div>
 
   <script>
+
+    // ---- Simple access password (client-side; not real security) ----
+    var SITE_PASSWORD = 'wegro-view';
+    (function () {
+      try {
+        if (sessionStorage.getItem('wegro_unlocked') === '1') unlock();
+      } catch (e) {}
+    })();
+    function unlock() {
+      document.body.classList.remove('locked');
+      document.getElementById('lockScreen').style.display = 'none';
+    }
+    function checkPassword() {
+      var val = document.getElementById('pwInput').value;
+      if (val === SITE_PASSWORD) {
+        try { sessionStorage.setItem('wegro_unlocked', '1'); } catch (e) {}
+        unlock();
+      } else {
+        document.getElementById('pwErr').style.display = 'block';
+      }
+    }
+    document.getElementById('pwInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') checkPassword();
+    });
+
+    // <<< Ekhane nijer deploy kora Apps Script Web App URL ta boshao (/exec diye shesh) >>>
+    var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwc4BBl-n5KfRSF16Suikw-3jkZKHK4mQhZMgxCb8ODxvulqkNU1e-qN06vC0rDsKvk/exec';
+
     var fields = ['name','email','mobile','position','date','startTime','endTime','interviewType','status','area','notes'];
     var defaults = { interviewType: 'Online', status: 'Will Attend', position: '' };
-    var interviewers = __DEFAULT_INTERVIEWERS__;
-    var waGroupsList = __WHATSAPP_GROUPS__;
+    var interviewers = [];
+    var waGroupsList = [];
     var personalNumbers = [];
+
+    // Default interviewers / WhatsApp group list Apps Script theke load kora
+    fetch(APPS_SCRIPT_URL + '?action=config')
+      .then(function (r) { return r.json(); })
+      .then(function (cfg) {
+        interviewers = cfg.defaultInterviewers || [];
+        waGroupsList = cfg.whatsappGroups || [];
+        renderChips();
+        renderWaGroups();
+      })
+      .catch(function () { /* config load fail korle-o form khali box diye kaj korbe */ });
     var MAX_MB = 10;
 
     function $(id) { return document.getElementById(id); }
@@ -860,23 +478,30 @@ const FORM_HTML = `<!DOCTYPE html>
     }
 
     function send(d) {
-      google.script.run
-        .withSuccessHandler(function (res) {
-          showMsg('ok', res);
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },  // preflight avoid korar jonno
+        body: JSON.stringify(d)
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
           setBusy(false);
+          if (!res.ok) { showMsg('err', res.message); return; }
+          showMsg('ok', res.message);
           fields.forEach(function (f) { $(f).value = defaults[f] !== undefined ? defaults[f] : ''; });
-          interviewers = __DEFAULT_INTERVIEWERS__.slice(); renderChips(); $('interviewerInput').value = '';
+          fetch(APPS_SCRIPT_URL + '?action=config').then(function (r) { return r.json(); }).then(function (cfg) {
+            interviewers = cfg.defaultInterviewers || []; renderChips();
+          });
+          $('interviewerInput').value = '';
           document.querySelectorAll('.waChk').forEach(function (el) { el.checked = false; });
           personalNumbers = []; renderWaNumbers(); $('waNumInput').value = ''; $('sendPersonalWa').checked = false;
           resetCv();
         })
-        .withFailureHandler(function (err) {
-          showMsg('err', err.message);
+        .catch(function (err) {
           setBusy(false);
-        })
-        .submitInterview(d);
+          showMsg('err', 'Network/Server error: ' + err.message);
+        });
     }
   </script>
 </body>
 </html>
-`;
