@@ -54,9 +54,31 @@
     .switch input:checked + .slider { background:var(--accent); }
     .switch input:checked + .slider:before { transform:translateX(18px); }
     @media (max-width:600px) { .grid { grid-template-columns:1fr; } .header, .card { padding-left:18px; padding-right:18px; } }
+      .lockscreen { position:fixed; inset:0; background:linear-gradient(135deg,#0f2a4a,#1b4b8a); display:flex; align-items:center; justify-content:center; z-index:9999; padding:16px; }
+    .lockbox { background:#fff; border-radius:14px; padding:32px 28px; max-width:360px; width:100%; text-align:center; box-shadow:0 10px 40px rgba(0,0,0,.25); }
+    .lockbox .icon { font-size:34px; }
+    .lockbox h2 { margin:10px 0 4px; font-size:18px; color:#0f2a4a; }
+    .lockbox p { margin:0 0 18px; font-size:13px; color:#5f6b7a; }
+    .lockbox input { width:100%; height:44px; padding:0 14px; border:1px solid #d8dee8; border-radius:8px; font-size:15px; text-align:center; }
+    .lockbox input:focus { outline:none; border-color:#1b6ef3; box-shadow:0 0 0 3px rgba(27,110,243,.15); }
+    .lockbox button { margin-top:14px; width:100%; height:44px; background:#1b6ef3; color:#fff; border:0; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; }
+    .lockbox button:hover { background:#1558c9; }
+    .lockbox .err { margin-top:10px; font-size:13px; color:#d92d20; display:none; }
+    body.locked .wrap { display:none; }
   </style>
 </head>
-<body>
+<body class="locked">
+
+  <div class="lockscreen" id="lockScreen">
+    <div class="lockbox">
+      <div class="icon">🔒</div>
+      <h2>WeGro Interview Form</h2>
+      <p>Continue korte password din</p>
+      <input id="pwInput" type="password" placeholder="Password" autocomplete="off">
+      <button onclick="checkPassword()">Enter</button>
+      <div class="err" id="pwErr">Password thik na, abar try koro.</div>
+    </div>
+  </div>
   <div class="wrap">
     <div class="header">
       <h1>Interview Scheduling</h1>
@@ -184,6 +206,31 @@
   </div>
 
   <script>
+
+    // ---- Simple access password (client-side; not real security) ----
+    var SITE_PASSWORD = 'wegro-view';
+    (function () {
+      try {
+        if (sessionStorage.getItem('wegro_unlocked') === '1') unlock();
+      } catch (e) {}
+    })();
+    function unlock() {
+      document.body.classList.remove('locked');
+      document.getElementById('lockScreen').style.display = 'none';
+    }
+    function checkPassword() {
+      var val = document.getElementById('pwInput').value;
+      if (val === SITE_PASSWORD) {
+        try { sessionStorage.setItem('wegro_unlocked', '1'); } catch (e) {}
+        unlock();
+      } else {
+        document.getElementById('pwErr').style.display = 'block';
+      }
+    }
+    document.getElementById('pwInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') checkPassword();
+    });
+
     // <<< Ekhane nijer deploy kora Apps Script Web App URL ta boshao (/exec diye shesh) >>>
     var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwc4BBl-n5KfRSF16Suikw-3jkZKHK4mQhZMgxCb8ODxvulqkNU1e-qN06vC0rDsKvk/exec';
 
