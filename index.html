@@ -104,14 +104,15 @@
           </div>
           <div>
             <label>Position <span class="req">*</span></label>
-            <select id="position">
-              <option value="" selected>Select position</option>
-              <option value="Field Officer">Field Officer</option>
-              <option value="Area Manager">Area Manager</option>
-              <option value="TSO">TSO</option>
-              <option value="Junior TSO">Junior TSO</option>
-              <option value="Regional Manager">Regional Manager</option>
-            </select>
+            <input id="position" list="positionList" placeholder="Select ba manually likhun" autocomplete="off">
+            <datalist id="positionList">
+              <option value="Field Officer"></option>
+              <option value="Area Manager"></option>
+              <option value="TSO"></option>
+              <option value="Junior TSO"></option>
+              <option value="Regional Manager"></option>
+            </datalist>
+            <div class="hint">Dropdown theke select korte paro, ba nijer moto manually likhte paro.</div>
           </div>
           <div>
             <label>Area</label>
