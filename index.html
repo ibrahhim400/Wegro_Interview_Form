@@ -201,6 +201,17 @@
         </div>
       </div>
 
+      <div class="section" id="smsSection">
+        <h2>Send SMS (optional)</h2>
+        <div class="toggle-row">
+          <div class="lbl"><b>Send SMS to Candidate</b><span>Candidate-er Mobile number-e invitation SMS jabe</span></div>
+          <label class="switch">
+            <input type="checkbox" id="sendSms">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
       <button id="btn" onclick="submitForm()">Save &amp; Send Invitation</button>
       <div id="msg"></div>
     </div>
@@ -451,6 +462,8 @@
       d.whatsappGroups = Array.prototype.slice.call(document.querySelectorAll('.waChk:checked'))
         .map(function (el) { return el.getAttribute('data-id'); }).join(',');
       d.personalWhatsapp = $('sendPersonalWa').checked ? personalNumbers.join(',') : '';
+      d.sendSms = $('sendSms').checked;
+      if (d.sendSms && !d.mobile) { showMsg('err', 'SMS pathate Mobile number dite hobe.'); return; }
 
       if (!d.name || !d.email || !d.position || !d.date || !d.startTime || !d.endTime) {
         showMsg('err', 'Employee Name, Email, Position, Date, Start Time ar End Time dite hobe.');
@@ -495,7 +508,7 @@
           });
           $('interviewerInput').value = '';
           document.querySelectorAll('.waChk').forEach(function (el) { el.checked = false; });
-          personalNumbers = []; renderWaNumbers(); $('waNumInput').value = ''; $('sendPersonalWa').checked = false;
+          personalNumbers = []; renderWaNumbers(); $('waNumInput').value = ''; $('sendPersonalWa').checked = false; $('sendSms').checked = false;
           resetCv();
         })
         .catch(function (err) {
