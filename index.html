@@ -176,8 +176,19 @@
           <div class="full">
             <label>Notes</label>
             <textarea id="notes" rows="3" placeholder="Internal note (optional)"></textarea>
-            <div class="hint">Notes shudhu Sheet-e save hobe, invitation mail-e jabe na.</div>
+            <div class="hint">Notes Sheet-e save hobe ar invitation mail, WhatsApp o SMS-e jabe.</div>
           </div>
+        </div>
+      </div>
+
+      <div class="section" id="smsSection">
+        <h2>Send SMS (optional)</h2>
+        <div class="toggle-row">
+          <div class="lbl"><b>Send SMS to Candidate</b><span>Candidate-er Mobile number-e invitation SMS jabe</span></div>
+          <label class="switch">
+            <input type="checkbox" id="sendSms">
+            <span class="slider"></span>
+          </label>
         </div>
       </div>
 
@@ -196,17 +207,6 @@
           <div class="lbl"><b>Send to Personal Numbers</b><span>On thakle upor-er number gulote message jabe</span></div>
           <label class="switch">
             <input type="checkbox" id="sendPersonalWa">
-            <span class="slider"></span>
-          </label>
-        </div>
-      </div>
-
-      <div class="section" id="smsSection">
-        <h2>Send SMS (optional)</h2>
-        <div class="toggle-row">
-          <div class="lbl"><b>Send SMS to Candidate</b><span>Candidate-er Mobile number-e invitation SMS jabe</span></div>
-          <label class="switch">
-            <input type="checkbox" id="sendSms">
             <span class="slider"></span>
           </label>
         </div>
@@ -244,7 +244,7 @@
     });
 
     // <<< Ekhane nijer deploy kora Apps Script Web App URL ta boshao (/exec diye shesh) >>>
-    var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxBV-5UN7kXXrZraw-gvUEQTu2kOpobOlYKG6AV1MFcUfWgjw1cQ5cH-xV0XhuKrpuF/exec';
+    var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxNp0HEaqyOx1B4LSZh64JjrFCWDXDqKigWC7AHMNUT4PTr7FHNUrVt_gKYHo4KCgeO/exec';
 
     var fields = ['name','email','mobile','position','date','startTime','endTime','interviewType','status','area','notes'];
     var defaults = { interviewType: 'Online', status: 'Will Attend', position: '' };
